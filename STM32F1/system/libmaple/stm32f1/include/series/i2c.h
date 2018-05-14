@@ -61,7 +61,7 @@ extern i2c_dev* const I2C2;
 
 static inline uint32 _i2c_bus_clk(i2c_dev *dev __attribute__((unused))) {
     /* Both I2C peripherals are on APB1 */
-    return STM32_PCLK1 / (1000 * 1000);
+    return STM32_PCLK1 / (4000 * 1000);
 }
 
 #define _I2C_HAVE_IRQ_FIXUP 1
