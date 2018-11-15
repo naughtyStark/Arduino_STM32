@@ -161,7 +161,7 @@ void SPIClass::begin(void) {
 void SPIClass::beginSlave(void) {
     spi_init(_currentSetting->spi_d);
     configure_gpios(_currentSetting->spi_d, 0);
-    uint32 flags = ((_currentSetting->bitOrder == MSBFIRST ? SPI_FRAME_MSB : SPI_FRAME_LSB) | _currentSetting->dataSize);
+    uint32 flags = ((_currentSetting->bitOrder == MSBFIRST ? SPI_FRAME_MSB : SPI_FRAME_LSB) | _currentSetting->dataSize | SPI_RX_ONLY);
     spi_slave_enable(_currentSetting->spi_d, (spi_mode)_currentSetting->dataMode, flags);
     // added for DMA callbacks.
     _currentSetting->state = SPI_STATE_READY;
@@ -384,6 +384,29 @@ uint16_t SPIClass::transfer16(uint16_t data) const
 	ret += spi_rx_reg(spi_d);            // read low byte
     return ret;
 }
+
+void SPIClass::transfer(uint8_t *buf, size_t count) 
+ {
+    if (count == 0) return;
+    spi_rx_reg(_currentSetting->spi_d);      // clear the RX buffer in case a byte is waiting on it.
+    spi_reg_map * regs = _currentSetting->spi_d->regs;
+    // start sequence: write byte 0
+    regs->DR = *buf;  
+    while (--count > 0) 
+    {//if you wanted to transfer 4 things, it will go 3,2,1 and when it hits 0 the loop is exited , which is why the first byte is sent outside the loop
+        while( !(regs->SR & SPI_SR_TXE) );   // wait for TXE flag
+        noInterrupts();                      // go atomic level - avoid interrupts to surely get the previously received data
+        regs->DR = *buf;                  // write the next data item to be transmitted into the SPI_DR register. This clears the TXE flag.
+        while ( !(regs->SR & SPI_SR_RXNE) ); // wait till data is available in the DR register
+        *buf++ = (uint8)(regs->DR);       // read and store the received byte. This clears the RXNE flag.
+        interrupts();                        // let systick do its job
+    }
+    // read remaining last byte
+    while ( !(regs->SR & SPI_SR_RXNE) );     // wait till data is available in the Rx register
+    *buf++ = (uint8)(regs->DR); 
+}
+
+
 
 /*  Roger Clark and Victor Perez, 2015
 *	Performs a DMA SPI transfer with at least a receive buffer.
